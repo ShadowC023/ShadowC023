@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yeocoin Mining Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            max-width: 1200px;
+            padding-top: 50px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        .form-container {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        input[type="text"] {
+            padding: 10px;
+            width: 300px;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        input[type="submit"] {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+        }
+        select {
+            padding: 10px;
+            width: 320px;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .result {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+        .mining-info {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Yeocoin Mining Dashboard</h1>
+            <p>Enter your transaction hash and select your NFT tier to view the accumulated mining data</p>
+        </div>
+
+        <div class="form-container">
+            <input type="text" id="transactionHash" placeholder="Enter Transaction Hash" />
+            <select id="nftTier">
+                <option value="bronze">Bronze </option>
+                <option value="silver">Silver </option>
+                <option value="gold">Gold </option>
+                <option value="diamond">Diamond </option>
+            </select>
+            <input type="submit" value="Check Mining" onclick="checkMining()" />
+        </div>
+
+        <div id="miningResult" class="mining-info" style="display: none;">
+            <p class="result" id="miningAmount">Accumulated Yeocoin: 0.00000000 YEO</p>
+            <p id="transactionStatus">Transaction Status: Pending...</p>
+        </div>
+    </div>
+
+    <script>
+        // Define mining rate per month for each tier
+        const miningRates = {
+            bronze: 1,   // 1 YEO per month for Bronze
+            silver: 2,   // 2 YEO per month for Silver
+            gold: 5,     // 5 YEO per month for Gold
+            diamond: 10  // 10 YEO per month for Diamond
+        };
+
+        const totalMiningDuration = 24; // Duration in months for all tiers (2 years)
+
+        // BaseScan API key and endpoint (replace with your own key)
+        const API_KEY = "Q9N3DP9533KAUGKD97NCIKWAR23T37PVYS";
+        const BASESCAN_URL = "https://api.basescan.org/api";
+
+        // Function to fetch transaction details from BaseScan
+        async function getTransactionTimestamp(transactionHash) {
+            const url = `${BASESCAN_URL}?module=transaction&action=gettxinfo&txhash=${transactionHash}&apikey=${API_KEY}`;
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                // Log the response for debugging (converted to string)
+                console.log("BaseScan API Response:", JSON.stringify(data, null, 2));
+
+                if (data.status === "1" && data.result) {
+                    const humanReadableTime = data.result.timeStamp; // Get the timestamp from response
+
+                    // Check if the timestamp is human-readable or Unix format
+                    if (isNaN(humanReadableTime)) {
+                        // If it's a human-readable time, convert to Unix timestamp
+                        const unixTimestamp = new Date(humanReadableTime).getTime() / 1000;
+                        return unixTimestamp; // Return the converted Unix timestamp
+                    } else {
+                        return parseInt(humanReadableTime); // If it's already Unix timestamp, return it
+                    }
+                } else {
+                    throw new Error("Transaction not found or invalid hash");
+                }
+            } catch (error) {
+                console.error("Error fetching transaction data:", error);
+                throw error;
+            }
+        }
+
+        async function checkMining() {
+            const transactionHash = document.getElementById("transactionHash").value;
+            const nftTier = document.getElementById("nftTier").value;
+            const miningResult = document.getElementById("miningResult");
+            const miningAmount = document.getElementById("miningAmount");
+            const transactionStatus = document.getElementById("transactionStatus");
+
+            if (!transactionHash) {
+                alert("Please enter a valid transaction hash!");
+                return;
+            }
+
+            if (!miningRates[nftTier]) {
+                alert("Please select a valid NFT tier!");
+                return;
+            }
+
+            // Fetch the purchase timestamp using the transaction hash
+            try {
+                const purchaseTimestamp = await getTransactionTimestamp(transactionHash);
+
+                const currentDate = Date.now();
+                const monthsElapsed = Math.floor((currentDate - purchaseTimestamp) / (1000 * 60 * 60 * 24 * 30)); // Convert ms to months
+                const remainingMonths = totalMiningDuration - monthsElapsed; // Calculate remaining months
+
+                // Calculate the maximum mining reward for the selected tier
+                const maxMiningReward = totalMiningDuration * miningRates[nftTier];
+
+                // Calculate the accumulated mining reward so far
+                let accumulatedMining = (monthsElapsed + (remainingMonths / 30)) * miningRates[nftTier];
+                accumulatedMining = Math.min(accumulatedMining, maxMiningReward); // Cap it at the max possible reward for the tier
+
+                miningResult.style.display = "block";
+                transactionStatus.textContent = "Transaction Status: Processing...";
+
+                // Simulating mining increment every second
+                let miningInterval = setInterval(() => {
+                    accumulatedMining += miningRates[nftTier] / 30; // Increment daily, considering a monthly mining rate
+                    accumulatedMining = Math.min(accumulatedMining, maxMiningReward); // Cap it at the max possible reward for the tier
+                    miningAmount.textContent = `Accumulated Yeocoin: ${accumulatedMining.toFixed(8)} YEO`;
+
+                    // Stop when it reaches the max possible mining amount for that tier
+                    if (accumulatedMining >= maxMiningReward) {
+                        clearInterval(miningInterval); // Stop once the target mining amount is reached
+                        transactionStatus.textContent = "Transaction Status: Successful!";
+                    }
+                }, 1000); // Update mining every second
+            } catch (error) {
+                alert("Error fetching transaction data: " + error.message);
+                transactionStatus.textContent = "Transaction Status: Failed";
+            }
+        }
+    </script>
+</body>
+</html>
